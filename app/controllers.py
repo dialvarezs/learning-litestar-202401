@@ -1,14 +1,19 @@
 from typing import Sequence
+
 from litestar import Controller, delete, get, patch, post
+from litestar.dto import DTOData
 from litestar.exceptions import NotFoundException
 from sqlalchemy import select
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import Session
+
+from app.dtos import TodoItemCreateDTO, TodoItemReadDTO, TodoItemUpdateDTO
 from app.models import TodoItem
 
 
 class ItemController(Controller):
     path = "/items"
+    return_dto = TodoItemReadDTO
 
     @get()
     async def get_items(
@@ -28,22 +33,27 @@ class ItemController(Controller):
         except NoResultFound:
             raise NotFoundException(detail=f"Item {item_id} no encontrado")
 
-    @post()
+    @post(dto=TodoItemCreateDTO)
     async def add_item(self, db_session: Session, data: TodoItem) -> TodoItem:
         db_session.add(data)
         db_session.commit()
 
         return data
 
-    # @patch("/{item_id:int}")
-    # async def change_item(self, item_id: int, data: TodoItemUpdate) -> list[TodoItem]:
-    #     item = find_item(item_id)
-    #     if data.titulo is not None:
-    #         item.titulo = data.titulo
-    #     if data.listo is not None:
-    #         item.listo = data.listo
+    @patch("/{item_id:int}", dto=TodoItemUpdateDTO)
+    async def change_item(
+        self, db_session: Session, item_id: int, data: DTOData[TodoItem]
+    ) -> TodoItem:
+        try:
+            stmt = select(TodoItem).where(TodoItem.id == item_id)
+            item = db_session.execute(stmt).scalar_one()
 
-    #     return TODO_LIST
+            data.update_instance(item)
+            db_session.commit()
+
+            return item
+        except NoResultFound:
+            raise NotFoundException(detail=f"Item {item_id} no encontrado")
 
     @delete("/{item_id:int}")
     async def delete_item(self, db_session: Session, item_id: int) -> None:
