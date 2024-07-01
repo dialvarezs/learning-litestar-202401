@@ -1,62 +1,56 @@
-from litestar import Controller, delete, get, patch, post, put
+from typing import Sequence
+from litestar import Controller, delete, get, patch, post
 from litestar.exceptions import NotFoundException
-from app.database import TODO_LIST
-from app.models import TodoItem, TodoItemUpdate
-
-
-def find_item(item_id: int) -> TodoItem:
-    for item in TODO_LIST:
-        if item.id == item_id:
-            return item
-    else:
-        raise NotFoundException(detail=f"Item {item_id} no encontrado")
+from sqlalchemy import select
+from sqlalchemy.exc import NoResultFound
+from sqlalchemy.orm import Session
+from app.models import TodoItem
 
 
 class ItemController(Controller):
     path = "/items"
 
     @get()
-    async def get_list(self, listo: bool | None = None) -> list[TodoItem]:
-        if listo is None:
-            return TODO_LIST
-        return [x for x in TODO_LIST if x.listo == listo]
+    async def get_items(
+        self, db_session: Session, listo: bool | None = None
+    ) -> Sequence[TodoItem]:
+        stmt = select(TodoItem)
+        if listo is not None:
+            stmt = stmt.where(TodoItem.listo == listo)
+
+        return db_session.execute(stmt).scalars().all()
 
     @get("/{item_id:int}")
-    async def get_item(self, item_id: int) -> TodoItem:
-        return find_item(item_id)
-
-    @post()
-    async def add_item(self, data: TodoItem) -> list[TodoItem]:
-        TODO_LIST.append(data)
-        return TODO_LIST
-
-    @put("/{item_id:int}")
-    async def update_item(self, item_id: int, data: TodoItem) -> list[TodoItem]:
-        for item in TODO_LIST:
-            if item.id == item_id:
-                item.id = data.id
-                item.titulo = data.titulo
-                item.listo = data.listo
-
-                return TODO_LIST
-        else:
+    async def get_item(self, db_session: Session, item_id: int) -> TodoItem:
+        try:
+            stmt = select(TodoItem).where(TodoItem.id == item_id)
+            return db_session.execute(stmt).scalar_one()
+        except NoResultFound:
             raise NotFoundException(detail=f"Item {item_id} no encontrado")
 
-    @patch("/{item_id:int}")
-    async def change_item(self, item_id: int, data: TodoItemUpdate) -> list[TodoItem]:
-        item = find_item(item_id)
-        if data.titulo is not None:
-            item.titulo = data.titulo
-        if data.listo is not None:
-            item.listo = data.listo
+    @post()
+    async def add_item(self, db_session: Session, data: TodoItem) -> TodoItem:
+        db_session.add(data)
+        db_session.commit()
 
-        return TODO_LIST
+        return data
+
+    # @patch("/{item_id:int}")
+    # async def change_item(self, item_id: int, data: TodoItemUpdate) -> list[TodoItem]:
+    #     item = find_item(item_id)
+    #     if data.titulo is not None:
+    #         item.titulo = data.titulo
+    #     if data.listo is not None:
+    #         item.listo = data.listo
+
+    #     return TODO_LIST
 
     @delete("/{item_id:int}")
-    async def delete_item(self, item_id: int) -> None:
-        for item in TODO_LIST:
-            if item.id == item_id:
-                TODO_LIST.remove(item)
-                return
-        else:
+    async def delete_item(self, db_session: Session, item_id: int) -> None:
+        try:
+            stmt = select(TodoItem).where(TodoItem.id == item_id)
+            item = db_session.execute(stmt).scalar_one()
+            db_session.delete(item)
+            db_session.commit()
+        except NoResultFound:
             raise NotFoundException(detail=f"Item {item_id} no encontrado")

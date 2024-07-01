@@ -1,14 +1,13 @@
-from dataclasses import dataclass
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
-@dataclass
-class TodoItem:
-    id: int
-    titulo: str
-    listo: bool
+class Base(DeclarativeBase):
+    pass
 
 
-@dataclass
-class TodoItemUpdate:
-    titulo: str | None = None
-    listo: bool | None = None
+class TodoItem(Base):
+    __tablename__ = "todoitems"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    titulo: Mapped[str]
+    listo: Mapped[bool]
