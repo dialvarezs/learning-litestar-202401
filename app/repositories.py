@@ -8,5 +8,5 @@ class TodoItemRepository(SQLAlchemySyncRepository[TodoItem]): # type: ignore
     model_type = TodoItem
 
 
-def provide_todoitem_repo(db_session: Session) -> TodoItemRepository:
+async def provide_todoitem_repo(db_session: Session) -> TodoItemRepository:
     return TodoItemRepository(session=db_session, auto_commit=True)

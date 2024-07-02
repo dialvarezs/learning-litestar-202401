@@ -1,6 +1,6 @@
 from typing import Sequence
 
-from advanced_alchemy.filters import SearchFilter
+from advanced_alchemy.filters import CollectionFilter
 from litestar import Controller, delete, get, patch, post
 from litestar.dto import DTOData
 from litestar.exceptions import NotFoundException
@@ -23,7 +23,9 @@ class ItemController(Controller):
         if listo is None:
             return todoitem_repo.list()
         else:
-            return todoitem_repo.list(SearchFilter(field_name="listo", value="listo"))
+            return todoitem_repo.list(
+                CollectionFilter(field_name="listo", values=[listo])
+            )
 
     @get("/{item_id:int}")
     async def get_item(
@@ -31,8 +33,8 @@ class ItemController(Controller):
     ) -> TodoItem:
         try:
             return todoitem_repo.get(item_id)
-        except NoResultFound:
-            raise NotFoundException(detail=f"Item {item_id} no encontrado")
+        except NoResultFound as e:
+            raise NotFoundException(detail=f"Item {item_id} no encontrado") from e
 
     @post(dto=TodoItemCreateDTO)
     async def add_item(
@@ -49,8 +51,8 @@ class ItemController(Controller):
                 id=item_id, **data.as_builtins(), match_fields=["id"]
             )
             return item
-        except NoResultFound:
-            raise NotFoundException(detail=f"Item {item_id} no encontrado")
+        except NoResultFound as e:
+            raise NotFoundException(detail=f"Item {item_id} no encontrado") from e
 
     @delete("/{item_id:int}")
     async def delete_item(
@@ -58,5 +60,5 @@ class ItemController(Controller):
     ) -> None:
         try:
             todoitem_repo.delete(item_id)
-        except NoResultFound:
-            raise NotFoundException(detail=f"Item {item_id} no encontrado")
+        except NoResultFound as e:
+            raise NotFoundException(detail=f"Item {item_id} no encontrado") from e
