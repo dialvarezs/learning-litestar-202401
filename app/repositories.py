@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.models import TodoItem
 
 
-class TodoItemRepository(SQLAlchemySyncRepository[TodoItem]): # type: ignore
+class TodoItemRepository(SQLAlchemySyncRepository[TodoItem]):  # type: ignore
     model_type = TodoItem
 
 

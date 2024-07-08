@@ -9,5 +9,5 @@ class TodoItem(Base):
     __tablename__ = "todoitems"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    titulo: Mapped[str]
-    listo: Mapped[bool]
+    title: Mapped[str]
+    done: Mapped[bool]

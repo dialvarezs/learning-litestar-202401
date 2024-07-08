@@ -18,13 +18,13 @@ class ItemController(Controller):
 
     @get()
     async def get_items(
-        self, todoitem_repo: TodoItemRepository, listo: bool | None = None
+        self, todoitem_repo: TodoItemRepository, done: bool | None = None
     ) -> Sequence[TodoItem]:
-        if listo is None:
+        if done is None:
             return todoitem_repo.list()
         else:
             return todoitem_repo.list(
-                CollectionFilter(field_name="listo", values=[listo])
+                CollectionFilter(field_name="done", values=[done])
             )
 
     @get("/{item_id:int}")
