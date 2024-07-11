@@ -1,10 +1,13 @@
+from datetime import datetime
 from typing import Sequence
 
 from advanced_alchemy.exceptions import NotFoundError
 from advanced_alchemy.filters import CollectionFilter
 from litestar import Controller, delete, get, patch, post
 from litestar.dto import DTOData
-from litestar.exceptions import NotFoundException
+from litestar.exceptions import HTTPException, NotFoundException
+from sqlalchemy import select
+from sqlalchemy.sql.functions import user
 
 from app.dtos import (
     CategoryCreateDTO,
@@ -13,14 +16,21 @@ from app.dtos import (
     CategoryUpdateDTO,
     TodoItemCreateDTO,
     TodoItemReadDTO,
+    TodoItemReadFullDTO,
     TodoItemUpdateDTO,
+    UserCreateDTO,
+    UserReadDTO,
+    UserReadFullDTO,
+    UserUpdateDTO,
 )
-from app.models import Category, TodoItem
+from app.models import Category, TodoItem, User
 from app.repositories import (
     CategoryRepository,
     TodoItemRepository,
+    UserRepository,
     provide_category_repo,
     provide_todoitem_repo,
+    provide_user_repo,
 )
 
 
@@ -28,7 +38,7 @@ class ItemController(Controller):
     path = "/items"
     tags = ["items"]
     dependencies = {"todoitem_repo": provide_todoitem_repo}
-    return_dto = TodoItemReadDTO
+    return_dto = TodoItemReadFullDTO
 
     @get()
     async def list_items(
@@ -50,16 +60,28 @@ class ItemController(Controller):
         except NotFoundError as e:
             raise NotFoundException(detail=f"Item {item_id} no encontrado") from e
 
-    @post(dto=TodoItemCreateDTO, dependencies={"category_repo": provide_category_repo})
+    @post(
+        dto=TodoItemCreateDTO,
+        dependencies={
+            "category_repo": provide_category_repo,
+            "user_repo": provide_user_repo,
+        },
+    )
     async def add_item(
         self,
         todoitem_repo: TodoItemRepository,
         category_repo: CategoryRepository,
+        user_repo: UserRepository,
         data: TodoItem,
     ) -> TodoItem:
+        if data.user_id is not None:
+            user = user_repo.get(data.user_id)
+            if not user.enabled:
+                raise HTTPException(status_code=400, detail="Usuario deshabilitado")
         data.categories = category_repo.list(
             CollectionFilter(field_name="id", values=[c.id for c in data.categories])
         )
+
         return todoitem_repo.add(data)
 
     @patch(
@@ -76,11 +98,14 @@ class ItemController(Controller):
     ) -> TodoItem:
         try:
             data_dict = data.as_builtins()
-            data_dict["categories"] = category_repo.list(
-                CollectionFilter(
-                    field_name="id", values=[c.id for c in data_dict["categories"]]
+            if "categories" in data_dict:
+                data_dict["categories"] = category_repo.list(
+                    CollectionFilter(
+                        field_name="id", values=[c.id for c in data_dict["categories"]]
+                    )
                 )
-            )
+            if "done" in data_dict and data_dict["done"]:
+                data_dict["completion"] = datetime.now()
             item, _ = todoitem_repo.get_and_update(
                 id=item_id, match_fields=["id"], **data_dict
             )
@@ -154,3 +179,67 @@ class CategoryController(Controller):
             raise NotFoundException(
                 detail=f"Categoria {category_id} no encontrada"
             ) from e
+
+
+class UserController(Controller):
+    path = "/users"
+    tags = ["users"]
+    return_dto = UserReadFullDTO
+    dependencies = {"user_repo": provide_user_repo}
+
+    @get("/", return_dto=UserReadDTO)
+    async def list_users(self, user_repo: UserRepository) -> list[User]:
+        return user_repo.list()
+
+    @get("/{user_id:int}")
+    async def get_user(self, user_repo: UserRepository, user_id: int) -> User:
+        try:
+            return user_repo.get(user_id)
+        except NotFoundError as e:
+            raise NotFoundException(detail=f"Usuario {user_id} no encontrado") from e
+
+    @post("/", dto=UserCreateDTO)
+    async def add_user(self, user_repo: UserRepository, data: User) -> User:
+        return user_repo.add(data)
+
+    @patch("/{user_id:int}", dto=UserUpdateDTO)
+    async def update_user(
+        self, user_repo: UserRepository, user_id: int, data: DTOData[User]
+    ) -> User:
+        try:
+            user, _ = user_repo.get_and_update(
+                id=user_id, **data.as_builtins(), match_fields=["id"]
+            )
+            return user
+        except NotFoundError as e:
+            raise NotFoundException(detail=f"Usuario {user_id} no encontrado") from e
+
+    @delete("/{user_id:int}")
+    async def delete_user(self, user_repo: UserRepository, user_id: int) -> None:
+        try:
+            user_repo.delete(user_id)
+        except NotFoundError as e:
+            raise NotFoundException(detail=f"Usuario {user_id} no encontrado") from e
+
+    @get(
+        "/{user_id:int}/items",
+        return_dto=TodoItemReadDTO,
+        dependencies={"todoitem_repo": provide_todoitem_repo},
+    )
+    async def get_user_items(
+        self,
+        todoitem_repo: TodoItemRepository,
+        user_id: int,
+        done: bool | None = None,
+    ) -> list[TodoItem]:
+        try:
+            if done is None:
+                return todoitem_repo.list(CollectionFilter(field_name="user_id", values=[user_id]))
+            else:
+                return todoitem_repo.list(
+                    statement=select(TodoItem).where(
+                        TodoItem.user_id == user_id, TodoItem.done == done
+                    )
+                )
+        except NotFoundError as e:
+            raise NotFoundException(detail=f"Usuario {user_id} no encontrado") from e
